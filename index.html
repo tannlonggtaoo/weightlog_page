@@ -1,13 +1,114 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1">
-  <title>Health Tracker</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f8f9f6">
+  <title>Weightlog · 体重与饮食手记</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
 </head>
 <body>
-  <h1>Health Tracker</h1>
-  <p> OK </p>
+  <header class="topbar">
+    <div class="bar-inner">
+      <div class="brand" aria-label="Weightlog">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        Weightlog
+      </div>
+      <nav id="navigation" aria-label="主导航" hidden>
+        <button type="button" data-view="entry">记一笔</button>
+        <button type="button" data-view="overview">总览</button>
+      </nav>
+      <button type="button" class="quiet" id="settings" hidden>连接设置</button>
+    </div>
+  </header>
+
+  <main>
+    <noscript>请启用 JavaScript 以记录体重与饮食。</noscript>
+    <section id="auth" class="auth-view" aria-labelledby="auth-title" hidden>
+      <h1 id="auth-title">连接记录仓库</h1>
+      <p class="intro">使用 GitHub 个人访问令牌连接 <strong id="repo-name"></strong>。</p>
+      <form id="auth-form" class="card form-card">
+        <label for="token-input">个人访问令牌（PAT）</label>
+        <input id="token-input" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="粘贴你的令牌" required>
+        <p class="hint">令牌会保存在此浏览器中，下次可直接进入。</p>
+        <button class="primary" id="connect" type="submit">保存连接</button>
+        <p class="message" id="auth-message" role="status"></p>
+        <div id="account-actions" class="form-actions" hidden>
+          <button type="button" id="auth-back" class="quiet">返回</button>
+          <button type="button" id="forget" class="danger">清除此设备的令牌</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="entry" aria-labelledby="entry-title" hidden>
+      <h1 id="entry-title">记一笔</h1>
+      <p class="intro" id="entry-date"></p>
+      <form id="entry-form" class="card form-card">
+        <div class="switcher" role="group" aria-label="记录类别">
+          <button type="button" data-kind="weight" aria-pressed="true">体重</button>
+          <button type="button" data-kind="food" aria-pressed="false">饮食</button>
+        </div>
+        <div id="weight-field" class="value-field">
+          <label for="weight-input">体重</label>
+          <div class="weight-box">
+            <input id="weight-input" type="number" inputmode="decimal" step="any" min="0" placeholder="0.0" required>
+            <span>kg</span>
+          </div>
+        </div>
+        <div id="food-field" class="value-field" hidden>
+          <label for="food-input">吃了什么？</label>
+          <textarea id="food-input" rows="3" placeholder="例如，一碗米饭、清炒时蔬和煎鱼" required disabled></textarea>
+        </div>
+        <div class="time-row">
+          <label for="time-input">记录时间</label>
+          <span id="auto-time">现在</span>
+          <button id="toggle-time" class="quiet" type="button" aria-controls="time-input" aria-expanded="false">修改时间</button>
+        </div>
+        <input id="time-input" type="datetime-local" disabled hidden required>
+        <button class="primary" id="save" type="submit">保存记录</button>
+        <button id="cancel-edit" class="quiet cancel-edit" type="button" hidden>取消修改</button>
+        <p id="entry-error" class="message error" role="alert"></p>
+      </form>
+      <div id="receipt" class="receipt" role="status" hidden>
+        <span id="receipt-text"></span>
+        <button id="edit-last" class="quiet" type="button">修改</button>
+      </div>
+    </section>
+
+    <section id="overview" aria-labelledby="overview-title" hidden>
+      <h1 id="overview-title">总览</h1>
+      <p class="intro">体重趋势与每日记录</p>
+      <p id="overview-message" class="message" role="status"></p>
+      <button type="button" class="quiet" id="retry" hidden>重新读取</button>
+      <div id="overview-content" hidden>
+        <div class="card summary-card">
+          <div class="summary-head">
+            <div>
+              <h2 class="small-title">最近一次体重</h2>
+              <div class="reading"><strong id="latest-kg">—</strong><span>kg</span></div>
+              <p class="hint" id="latest-at"></p>
+            </div>
+            <span class="range">近 30 天趋势</span>
+          </div>
+          <canvas id="trend" aria-label="近 30 天体重趋势，测量详情见下方每日记录"></canvas>
+          <p class="hint chart-caption" id="chart-caption" aria-live="polite"></p>
+        </div>
+        <div class="history-head"><h2>每日记录</h2><span class="hint" id="entry-count"></span></div>
+        <div id="history"></div>
+      </div>
+    </section>
+  </main>
+
+  <template id="record-row">
+    <li class="record-row">
+      <div class="row-meta"><time></time><span class="kind-label"></span></div>
+      <p class="row-value"></p>
+      <div class="row-actions">
+        <button type="button" class="quiet" data-action="edit">修改</button>
+        <button type="button" class="danger" data-action="delete">删除</button>
+      </div>
+    </li>
+  </template>
 </body>
 </html>
