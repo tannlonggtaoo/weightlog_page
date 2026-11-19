@@ -12,4 +12,4 @@
 
 在前端仓库的 Settings → Pages 选择 Deploy from a branch，发布源选 `main` 和 `/(root)`。推送至该分支后由 GitHub Pages 自动发布。
 
-本地预览时，在此目录运行 `python -m http.server 8000 --bind 127.0.0.1`，用浏览器打开 `http://127.0.0.1:8000`。
+本地预览时，在此目录运行 `python preview.py`，用浏览器打开 `http://127.0.0.1:8000`。
