@@ -8,8 +8,10 @@
   --input-border: #cbd7cf;
   --placeholder: #79847f;
   --accent: #236857;
-  --on-accent: #fff;
-  --accent-hover: #1b5648;
+  /* Keep the button and logo legible if the browser darkens the surrounding page. */
+  --primary-fill: #459a7d;
+  --on-primary: #06150f;
+  --primary-active: #3a9477;
   --focus-ring: #569a85;
   --tint: #e7f1eb;
   --switcher-bg: #eef2ed;
@@ -31,8 +33,6 @@
     --input-border: #64796d;
     --placeholder: #99ada1;
     --accent: #91ceb1;
-    --on-accent: #142e22;
-    --accent-hover: #a4d9bf;
     --focus-ring: var(--accent);
     --tint: #293f34;
     --switcher-bg: var(--paper);
@@ -70,11 +70,15 @@ label, .small-title { font-size: .95rem; font-weight: 600; }
   gap: 1.5rem;
 }
 .brand { margin-right: auto; display: flex; align-items: center; gap: .55rem; font-size: 1.17rem; font-weight: 700; letter-spacing: -.04em; }
+.brand-mark, .primary {
+  background: var(--primary-fill); color: var(--on-primary);
+  border: 1px solid var(--accent);
+}
 .brand-mark {
-  width: 1.85rem; height: 1.85rem; border-radius: .55rem; background: var(--accent);
+  width: 1.85rem; height: 1.85rem; border-radius: .55rem;
   display: inline-flex; align-items: flex-end; justify-content: center; gap: 2px; padding-bottom: .5rem;
 }
-.brand-mark i { width: 3px; border-radius: 2px; background: var(--on-accent); height: .4rem; }
+.brand-mark i { width: 3px; border-radius: 2px; background: currentColor; height: .4rem; }
 .brand-mark i:nth-child(2) { height: .62rem; }
 .brand-mark i:last-child { height: .85rem; }
 nav, .switcher { display: flex; align-items: center; gap: .25rem; }
@@ -153,9 +157,12 @@ textarea { resize: vertical; }
 .time-row button { padding-right: .25rem; }
 .primary {
   width: 100%; min-height: 3rem; margin-top: 1.15rem; border-radius: .7rem;
-  color: var(--on-accent); background: var(--accent); font-weight: 650;
+  font-weight: 650;
 }
-.primary:hover { background: var(--accent-hover); }
+.primary:active { background: var(--primary-active); }
+@media (hover: hover) {
+  .primary:hover { background: var(--primary-active); }
+}
 .form-actions, .history-head, .summary-head, .receipt { justify-content: space-between; }
 .form-actions { flex-wrap: wrap; margin-top: 1rem; }
 .form-actions .primary { width: auto; min-height: 2.75rem; margin-top: 0; padding: .4rem .95rem; }

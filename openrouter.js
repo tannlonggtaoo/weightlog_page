@@ -12,7 +12,7 @@ const calorieFormat = {
   strict: true,
   schema: {
     type: "object",
-    properties: { kcal: { type: ["number", "null"] } },
+    properties: { kcal: { type: "number", minimum: 0 } },
     required: ["kcal"],
     additionalProperties: false
   }
@@ -77,22 +77,24 @@ export async function estimateCalories(key, { kind, text, photo }, signal) {
       input: [{ role: "user", content }],
       text: { format: calorieFormat },
       provider: { require_parameters: true },
-      reasoning: { effort: "minimal" },
-      max_output_tokens: 512
+      reasoning: { enabled: true, max_tokens: 768 },
+      max_output_tokens: 1024
     }
   });
 
+  const result = await response.json().catch(() => null);
+  if (result?.incomplete_details?.reason === "max_output_tokens") {
+    throw new Error("模型输出达到长度上限，未生成热量结果。");
+  }
   let parsed;
   try {
-    const result = await response.json();
-    if (result.status !== "completed") throw new Error();
+    if (result?.status !== "completed") throw new Error();
     const message = result.output.find(item => item.type === "message" && item.role === "assistant");
     const output = message.content.filter(part => part.type === "output_text").map(part => part.text).join("");
     parsed = JSON.parse(output);
   } catch {
     throw new Error("OpenRouter 未返回有效的热量结果。");
   }
-  if (parsed?.kcal === null) return null;
   if (!Number.isFinite(parsed?.kcal) || parsed.kcal < 0) {
     throw new Error("OpenRouter 未返回有效的热量结果。");
   }
