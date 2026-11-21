@@ -7,8 +7,8 @@
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f9f6">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141c19">
   <title>Weightlog · 体重、饮食与运动手记</title>
-  <link rel="stylesheet" href="./style.css?v=2">
-  <script type="module" src="./app.js?v=3"></script>
+  <link rel="stylesheet" href="./style.css?v=3">
+  <script type="module" src="./app.js?v=4"></script>
 </head>
 <body>
   <header class="topbar">
@@ -21,26 +21,59 @@
         <button type="button" data-view="entry">记一笔</button>
         <button type="button" data-view="overview">总览</button>
       </nav>
-      <button type="button" class="quiet" id="settings" hidden>连接设置</button>
+      <button type="button" class="quiet" id="settings" hidden>设置</button>
     </div>
   </header>
 
   <main>
     <noscript>请启用 JavaScript 以记录体重、饮食与运动。</noscript>
     <section id="auth" class="auth-view" aria-labelledby="auth-title" hidden>
-      <h1 id="auth-title">连接记录仓库</h1>
-      <p class="intro">使用 GitHub 个人访问令牌连接 <strong id="repo-name"></strong>。</p>
-      <form id="auth-form" class="card form-card">
-        <label for="token-input">个人访问令牌（PAT）</label>
-        <input id="token-input" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="粘贴你的令牌" required>
-        <p class="hint">令牌会保存在此浏览器中，下次可直接进入。</p>
-        <button class="primary" id="connect" type="submit">保存连接</button>
-        <p class="message" id="auth-message" role="status"></p>
-        <div id="account-actions" class="form-actions" hidden>
-          <button type="button" id="auth-back" class="quiet">返回</button>
-          <button type="button" id="forget" class="danger">清除此设备的令牌</button>
-        </div>
-      </form>
+      <div class="settings-heading">
+        <h1 id="auth-title">设置</h1>
+        <button type="button" id="auth-back" class="quiet" hidden>返回</button>
+      </div>
+      <p class="intro">凭证和个人资料保存在此浏览器中。</p>
+      <div class="settings-list">
+        <form id="auth-form" class="card form-card" aria-labelledby="github-settings-title">
+          <h2 id="github-settings-title">GitHub 仓库</h2>
+          <p class="hint">记录保存到 <strong id="repo-name"></strong>。</p>
+          <label for="token-input">个人访问令牌（PAT）</label>
+          <input id="token-input" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+          <div class="form-actions">
+            <button class="primary" type="submit">保存令牌</button>
+            <button type="button" id="forget" class="danger" hidden>清除令牌</button>
+          </div>
+          <p class="message" id="auth-message" role="status"></p>
+        </form>
+        <form id="openrouter-form" class="card form-card" aria-labelledby="openrouter-settings-title">
+          <h2 id="openrouter-settings-title">OpenRouter</h2>
+          <label for="openrouter-key-input">API Key</label>
+          <input id="openrouter-key-input" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+          <p class="hint">点「估算」时，当前记录的描述和照片会发送给 OpenRouter。</p>
+          <div class="form-actions">
+            <button class="primary" type="submit">保存 Key</button>
+            <button type="button" id="forget-openrouter" class="danger" hidden>清除 Key</button>
+          </div>
+          <p class="message" id="openrouter-message" role="status"></p>
+        </form>
+        <form id="profile-form" class="card form-card" aria-labelledby="profile-title">
+          <h2 id="profile-title">个人资料</h2>
+          <div class="profile-fields">
+            <div>
+              <label for="birth-year-input">出生年份</label>
+              <input id="birth-year-input" type="number" inputmode="numeric" min="1" step="1">
+            </div>
+            <div>
+              <label for="height-input">身高（cm）</label>
+              <input id="height-input" type="number" inputmode="decimal" min="0" step="any">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="primary" type="submit">保存资料</button>
+          </div>
+          <p class="message" id="profile-message" role="status"></p>
+        </form>
+      </div>
     </section>
 
     <section id="entry" aria-labelledby="entry-title" hidden>
@@ -78,6 +111,15 @@
         <div id="exercise-field" class="value-field" hidden>
           <label for="exercise-input">做了什么运动？</label>
           <textarea id="exercise-input" rows="3" placeholder="例如慢跑 30 分钟" required disabled></textarea>
+        </div>
+        <div id="calorie-field" class="value-field" hidden>
+          <label id="calorie-label" for="calorie-input">热量（选填）</label>
+          <div class="calorie-row">
+            <input id="calorie-input" type="number" inputmode="decimal" min="0" step="any" aria-describedby="calorie-unit" disabled>
+            <span class="hint" id="calorie-unit">kcal</span>
+            <button type="button" class="quiet" id="estimate-calories">估算</button>
+          </div>
+          <p class="hint message" id="estimate-message" role="status"></p>
         </div>
         <div class="time-row">
           <label for="time-input">记录时间</label>
@@ -122,7 +164,10 @@
   <template id="record-row">
     <li class="record-row">
       <div class="row-meta"><time></time><span class="kind-label"></span></div>
-      <div class="row-content"><p class="row-value"></p></div>
+      <div class="row-content">
+        <p class="row-value"></p>
+        <p class="row-calories hint" hidden></p>
+      </div>
       <div class="row-actions">
         <button type="button" class="quiet" data-action="edit">修改</button>
         <button type="button" class="danger" data-action="delete">删除</button>

@@ -1,14 +1,24 @@
-import { repository, checkConnection, listRecords, changeRecord, uploadPhoto, readPhoto } from "./github.js?v=2";
+import { repository, checkConnection, listRecords, changeRecord, uploadPhoto, readPhoto } from "./github.js?v=3";
 import { showTrend } from "./chart.js";
 import { compressPhoto, createPhotoGallery } from "./photos.js";
+import { checkOpenRouterKey, estimateCalories } from "./openrouter.js";
 
 const byId = id => document.getElementById(id);
 const kindLabels = { weight: "体重", food: "饮食", exercise: "运动" };
-const tokenKey = "weightlog:" + repository + ":pat";
+const calorieLabels = { food: "摄入", exercise: "消耗" };
+const storagePrefix = "weightlog:" + repository + ":";
+const tokenKey = storagePrefix + "pat";
+const openRouterStorageKey = storagePrefix + "openrouter";
+const birthYearKey = storagePrefix + "birth-year";
+const heightKey = storagePrefix + "height-cm";
+const calorieInput = byId("calorie-input");
+const estimateButton = byId("estimate-calories");
+const estimateMessage = byId("estimate-message");
 const dayFormat = new Intl.DateTimeFormat("zh-CN", {
   year: "numeric", month: "long", day: "numeric", weekday: "long"
 });
 let token = localStorage.getItem(tokenKey) || "";
+let openRouterKey = localStorage.getItem(openRouterStorageKey) || "";
 let currentView = "auth";
 let returnView = "entry";
 let kind = "weight";
@@ -16,6 +26,8 @@ let editing = null;
 let editReturn = "entry";
 let pending = null;
 let draftPhoto = null;
+let calorieDrafts = {};
+let estimateController = null;
 let lastSaved = null;
 let records = [];
 let overviewRequest = 0;
@@ -38,12 +50,18 @@ function recordValue(record) {
   return record.text;
 }
 
+function calorieSummary(record) {
+  const label = calorieLabels[record.type];
+  return label && Number.isFinite(record.kcal) ? label + " " + record.kcal + " kcal" : "";
+}
+
 function show(view) {
   if (currentView === "overview" && view !== "overview") gallery.clear(byId("history"));
+  if (currentView === "entry" && view !== "entry") cancelEstimate();
   currentView = view;
   for (const id of ["auth", "entry", "overview"]) byId(id).hidden = id !== view;
   byId("settings").hidden = byId("navigation").hidden = view === "auth";
-  byId("account-actions").hidden = !token;
+  if (view === "auth") loadSettings();
   for (const button of byId("navigation").querySelectorAll("button")) {
     if (button.dataset.view === view) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
@@ -73,7 +91,7 @@ function report(error, output) {
   feedback(output, message, true);
 }
 
-async function perform(output, progress, action) {
+async function perform(output, progress, action, handleError = report) {
   const main = document.querySelector("main");
   const header = document.querySelector("header");
   if (main.inert) return;
@@ -84,42 +102,62 @@ async function perform(output, progress, action) {
     if (output.textContent === progress) output.textContent = "";
   } catch (error) {
     if (output.textContent === progress) output.textContent = "";
-    report(error, output);
+    handleError(error, output);
   } finally {
     main.inert = header.inert = false;
   }
+}
+
+function updateCredentialControls() {
+  byId("auth-back").hidden = byId("forget").hidden = !token;
+  byId("forget-openrouter").hidden = !openRouterKey;
+  byId("token-input").placeholder = token ? "已保存，输入新令牌更换" : "粘贴 GitHub PAT";
+  byId("openrouter-key-input").placeholder = openRouterKey ? "已保存，输入新 Key 更换" : "粘贴 OpenRouter API Key";
+}
+
+function loadSettings() {
+  for (const id of ["token-input", "openrouter-key-input"]) byId(id).value = "";
+  for (const id of ["auth-message", "openrouter-message", "profile-message"]) feedback(byId(id), "");
+  byId("birth-year-input").max = new Date().getFullYear();
+  byId("birth-year-input").value = localStorage.getItem(birthYearKey) ?? "";
+  byId("height-input").value = localStorage.getItem(heightKey) ?? "";
+  updateCredentialControls();
 }
 
 byId("repo-name").textContent = repository;
 byId("auth-form").addEventListener("submit", event => {
   event.preventDefault();
   const input = byId("token-input");
+  const output = byId("auth-message");
   const candidate = input.value.trim();
-  if (!candidate) return feedback(byId("auth-message"), "请填写令牌。", true);
-  perform(byId("auth-message"), "正在验证连接…", async () => {
+  if (!candidate) return feedback(output, "请填写令牌。", true);
+  perform(output, "正在验证连接…", async () => {
     await checkConnection(candidate);
+    const connecting = !token;
     localStorage.setItem(tokenKey, candidate);
     token = candidate;
     input.value = "";
-    show(returnView);
+    if (connecting) {
+      show(returnView);
+    } else {
+      updateCredentialControls();
+      feedback(output, "已保存 GitHub 令牌。");
+    }
   });
 });
 
 byId("settings").onclick = () => {
   returnView = currentView;
-  byId("token-input").value = "";
-  byId("auth-message").textContent = "";
   show("auth");
 };
 byId("auth-back").onclick = () => {
-  byId("token-input").value = "";
+  byId("token-input").value = byId("openrouter-key-input").value = "";
   show(returnView);
 };
 byId("forget").onclick = () => {
   localStorage.removeItem(tokenKey);
   token = "";
   returnView = "entry";
-  byId("token-input").value = "";
   clearEntry();
   records = [];
   gallery.clear(byId("history"));
@@ -127,6 +165,40 @@ byId("forget").onclick = () => {
   show("auth");
   feedback(byId("auth-message"), "已清除此设备的令牌。");
 };
+byId("openrouter-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const input = byId("openrouter-key-input");
+  const output = byId("openrouter-message");
+  const candidate = input.value.trim();
+  if (!candidate) return feedback(output, "请填写 OpenRouter API Key。", true);
+  perform(output, "正在验证 OpenRouter Key…", async () => {
+    await checkOpenRouterKey(candidate);
+    localStorage.setItem(openRouterStorageKey, candidate);
+    openRouterKey = candidate;
+    input.value = "";
+    updateCredentialControls();
+    feedback(output, "已保存 OpenRouter Key。");
+  }, (error, message) => feedback(message, error.message, true));
+});
+byId("forget-openrouter").onclick = () => {
+  localStorage.removeItem(openRouterStorageKey);
+  openRouterKey = byId("openrouter-key-input").value = "";
+  updateCredentialControls();
+  feedback(byId("openrouter-message"), "已清除 OpenRouter Key。");
+};
+byId("profile-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const height = byId("height-input");
+  const output = byId("profile-message");
+  if (height.value && !(height.valueAsNumber > 0)) {
+    return feedback(output, "请输入大于零的身高。", true);
+  }
+  for (const [key, input] of [[birthYearKey, byId("birth-year-input")], [heightKey, height]]) {
+    if (input.value) localStorage.setItem(key, String(input.valueAsNumber));
+    else localStorage.removeItem(key);
+  }
+  feedback(output, "已保存个人资料。");
+});
 byId("navigation").onclick = event => {
   const view = event.target.closest("button")?.dataset.view;
   if (!view || view === currentView) return;
@@ -135,7 +207,12 @@ byId("navigation").onclick = event => {
 };
 
 function setKind(value) {
-  kind = value;
+  if (kind !== value) {
+    if (calorieLabels[kind]) calorieDrafts[kind] = calorieInput.value;
+    kind = value;
+    calorieInput.value = calorieDrafts[kind] ?? "";
+    cancelEstimate();
+  }
   pending = null;
   byId("entry-error").textContent = "";
   for (const button of document.querySelectorAll("[data-kind]")) {
@@ -144,6 +221,9 @@ function setKind(value) {
     button.setAttribute("aria-pressed", String(selected));
     byId(buttonKind + "-field").hidden = byId(buttonKind + "-input").disabled = !selected;
   }
+  const calorieLabel = calorieLabels[kind];
+  byId("calorie-field").hidden = calorieInput.disabled = !calorieLabel;
+  if (calorieLabel) byId("calorie-label").textContent = "热量" + calorieLabel + "（选填）";
 }
 
 function setTime(value = "") {
@@ -157,6 +237,7 @@ function setTime(value = "") {
 }
 
 function setDraftPhoto(photo) {
+  cancelEstimate();
   draftPhoto = photo;
   pending = null;
   const preview = byId("photo-preview");
@@ -169,6 +250,7 @@ function setDraftPhoto(photo) {
 function clearEntry() {
   editing = pending = lastSaved = null;
   byId("entry-form").reset();
+  calorieDrafts = {};
   setTime();
   setKind(kind);
   setDraftPhoto(null);
@@ -185,6 +267,7 @@ function edit(record) {
   editing = record;
   setKind(record.type);
   byId(record.type + "-input").value = record.type === "weight" ? record.kg : record.text ?? "";
+  calorieInput.value = record.kcal ?? "";
   if (record.type === "food" && record.photoSha) setDraftPhoto({ sha: record.photoSha });
   setTime(record.at.slice(0, 16));
   byId("entry-title").textContent = "修改记录";
@@ -193,6 +276,61 @@ function edit(record) {
   show("entry");
 }
 
+function cancelEstimate() {
+  estimateController?.abort();
+  estimateController = null;
+  estimateButton.disabled = false;
+  feedback(estimateMessage, "");
+}
+
+estimateButton.onclick = async () => {
+  if (estimateController || !calorieLabels[kind]) return;
+  const entryKind = kind;
+  const description = byId(entryKind + "-input").value;
+  const photo = entryKind === "food" ? draftPhoto : null;
+  if (!description.trim() && !photo) {
+    const message = entryKind === "food" ? "请写下饮食内容或选一张照片。" : "请写下运动内容。";
+    return feedback(estimateMessage, message, true);
+  }
+  const key = openRouterKey;
+  if (!key) return feedback(estimateMessage, "请先在设置中保存 OpenRouter API Key。", true);
+
+  const controller = new AbortController();
+  const { signal } = controller;
+  estimateController = controller;
+  estimateButton.disabled = true;
+  feedback(estimateMessage, "正在估算…");
+  const timeout = setTimeout(() => {
+    if (estimateController !== controller) return;
+    cancelEstimate();
+    feedback(estimateMessage, "估算超时，可以手填或直接保存。", true);
+  }, 25_000);
+
+  try {
+    let image = photo?.preview;
+    if (photo?.sha && !image) {
+      image = await readPhoto(token, photo.sha, signal).catch(() => {
+        throw new Error("读取 GitHub 照片失败，请检查连接后重试。");
+      });
+    }
+    if (estimateController !== controller) return;
+    const kcal = await estimateCalories(key, { kind: entryKind, text: description, photo: image }, signal);
+    if (estimateController !== controller) return;
+    if (kcal === null) return feedback(estimateMessage, "暂未估出。");
+    calorieInput.value = kcal;
+    pending = null;
+    feedback(estimateMessage, "已填入热量。");
+  } catch (error) {
+    if (estimateController === controller) feedback(estimateMessage, error.message, true);
+  } finally {
+    clearTimeout(timeout);
+    if (estimateController === controller) {
+      estimateController = null;
+      estimateButton.disabled = false;
+    }
+  }
+};
+
 for (const button of document.querySelectorAll("[data-kind]")) {
   button.onclick = () => setKind(button.dataset.kind);
 }
@@ -200,6 +338,7 @@ for (const input of [byId("camera-input"), byId("album-input")]) {
   input.onchange = async () => {
     const file = input.files[0];
     if (!file) return;
+    cancelEstimate();
     await perform(byId("entry-error"), "正在压缩照片…", async () => {
       setDraftPhoto({ preview: await compressPhoto(file) });
     });
@@ -219,6 +358,7 @@ byId("cancel-edit").onclick = () => {
 };
 byId("entry-form").addEventListener("input", () => {
   pending = null;
+  cancelEstimate();
   byId("entry-error").textContent = "";
 });
 
@@ -237,6 +377,12 @@ byId("entry-form").addEventListener("submit", event => {
   if (kind === "weight" && !(value.kg > 0)) return feedback(output, "请输入大于零的体重。", true);
   if (kind === "food" && !value.text && !draftPhoto) return feedback(output, "请写下饮食内容或选一张照片。", true);
   if (kind === "exercise" && !value.text) return feedback(output, "请写下运动内容。", true);
+  if (kind !== "weight" && calorieInput.value !== "") {
+    const kcal = calorieInput.valueAsNumber;
+    if (!Number.isFinite(kcal) || kcal < 0) return feedback(output, "请输入非负的热量数值。", true);
+    value.kcal = kcal;
+  }
+  cancelEstimate();
   pending ??= {
     id: editing?.id || crypto.randomUUID(), type: kind, at: entryTime(), ...value
   };
@@ -253,7 +399,8 @@ byId("entry-form").addEventListener("submit", event => {
       show("overview");
     } else {
       lastSaved = record;
-      byId("receipt-text").textContent = "已保存 " + recordValue(record) + " · " + displayTime(record);
+      const details = [recordValue(record), calorieSummary(record), displayTime(record)];
+      byId("receipt-text").textContent = "已保存 " + details.filter(Boolean).join(" · ");
       byId("receipt").hidden = false;
     }
   });
@@ -287,6 +434,9 @@ function renderOverview() {
     row.querySelector(".kind-label").textContent = kindLabels[record.type];
     const value = row.querySelector(".row-value");
     value.textContent = recordValue(record);
+    const calories = row.querySelector(".row-calories");
+    calories.textContent = calorieSummary(record);
+    calories.hidden = !calories.textContent;
     if (record.type === "food" && record.photoSha) {
       value.hidden = !record.text;
       row.querySelector(".row-content").append(gallery.thumbnail({ sha: record.photoSha }));

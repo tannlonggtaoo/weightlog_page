@@ -1,11 +1,11 @@
 export const repository = "tannlonggtaoo/weightlog";
 const baseUrl = "https://api.github.com/repos/" + repository;
 
-async function request(token, path, method = "GET", body) {
+async function request(token, path, method = "GET", body, signal) {
   const headers = { Accept: "application/vnd.github+json", Authorization: "Bearer " + token };
   if (body) headers["Content-Type"] = "application/json";
   const response = await fetch(baseUrl + path, {
-    method, headers, cache: "no-store", body: body && JSON.stringify(body)
+    method, headers, cache: "no-store", body: body && JSON.stringify(body), signal
   });
   if (!response.ok) {
     const messages = {
@@ -32,8 +32,8 @@ export async function uploadPhoto(token, jpegDataUrl) {
   return blob.sha;
 }
 
-export async function readPhoto(token, sha) {
-  const blob = await request(token, "/git/blobs/" + encodeURIComponent(sha));
+export async function readPhoto(token, sha, signal) {
+  const blob = await request(token, "/git/blobs/" + encodeURIComponent(sha), "GET", undefined, signal);
   return "data:image/jpeg;base64," + blob.content.replace(/\s/g, "");
 }
 
@@ -90,7 +90,8 @@ async function commitFiles(token, head, entries, branch, message) {
 
 function sameRecord(a, b) {
   return a && b && a.id === b.id && a.at === b.at && a.type === b.type &&
-    a.kg === b.kg && a.text === b.text && (a.photoSha ?? null) === (b.photoSha ?? null);
+    a.kg === b.kg && a.text === b.text && (a.kcal ?? null) === (b.kcal ?? null) &&
+    (a.photoSha ?? null) === (b.photoSha ?? null);
 }
 
 // before is null for an addition, after is null for a deletion.

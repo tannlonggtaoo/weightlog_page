@@ -87,6 +87,11 @@ nav button[aria-current="page"] { color: var(--accent); background: var(--tint);
 
 main { max-width: 44rem; margin: 0 auto; padding: 2.8rem 1.4rem 4rem; }
 .auth-view { max-width: 33rem; margin: 1rem auto; }
+.settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.settings-list { display: grid; gap: 1rem; }
+.settings-list h2 { margin-bottom: .7rem; }
+.settings-list form > label { display: block; margin-top: .7rem; }
+.profile-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
 .card { border: 1px solid var(--line); border-radius: 1.15rem; background: var(--surface); box-shadow: 0 3px 15px #203d2b06; }
 .form-card, .summary-card { padding: clamp(1.15rem, 4vw, 2rem); }
 .switcher { border-radius: .8rem; background: var(--switcher-bg); padding: .25rem; }
@@ -128,6 +133,11 @@ input, textarea {
 input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 1; }
 label + input, label + textarea, .weight-box { margin-top: .5rem; }
 textarea { resize: vertical; }
+.calorie-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center;
+  gap: .65rem; margin-top: .5rem;
+}
+.calorie-row button { min-height: 2.9rem; padding-inline: .9rem; border: 1px solid var(--input-border); border-radius: .65rem; }
 .weight-box { display: flex; align-items: baseline; gap: .5rem; border-bottom: 1px solid var(--line); padding-bottom: .4rem; }
 .weight-box:focus-within { border-color: var(--accent); }
 .weight-box input {
@@ -147,7 +157,8 @@ textarea { resize: vertical; }
 }
 .primary:hover { background: var(--accent-hover); }
 .form-actions, .history-head, .summary-head, .receipt { justify-content: space-between; }
-.form-actions { border-top: 1px solid var(--line); margin-top: 1rem; padding-top: .45rem; }
+.form-actions { flex-wrap: wrap; margin-top: 1rem; }
+.form-actions .primary { width: auto; min-height: 2.75rem; margin-top: 0; padding: .4rem .95rem; }
 .auth-view .hint { margin-top: .65rem; }
 .cancel-edit { display: block; margin: .4rem auto 0; }
 .message:not(:empty) { margin: .7rem 0; }
@@ -174,8 +185,9 @@ textarea { resize: vertical; }
 .row-meta { display: grid; justify-items: start; gap: .15rem; color: var(--muted); font-size: .875rem; font-variant-numeric: tabular-nums; }
 .kind-label { font-size: .8rem; }
 .row-content { min-width: 0; }
-.row-value:not([hidden]) + .photo-thumb { margin-top: .4rem; }
+.row-content > :not([hidden]) ~ .photo-thumb { margin-top: .4rem; }
 .row-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+.row-calories { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .row-actions { display: flex; }
 .row-actions button { padding-inline: .45rem; min-width: 2.75rem; }
 
