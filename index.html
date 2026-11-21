@@ -7,8 +7,8 @@
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f9f6">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141c19">
   <title>Weightlog · 体重与饮食手记</title>
-  <link rel="stylesheet" href="./style.css">
-  <script type="module" src="./app.js"></script>
+  <link rel="stylesheet" href="./style.css?v=2">
+  <script type="module" src="./app.js?v=2"></script>
 </head>
 <body>
   <header class="topbar">
@@ -62,12 +62,16 @@
           <label for="food-input">吃了什么？</label>
           <textarea id="food-input" rows="3" placeholder="写下这餐吃了什么，也可以只拍一张照片" disabled></textarea>
           <div class="photo-actions">
-            <button type="button" class="photo-picker" data-pick="camera-input">拍照</button>
-            <button type="button" class="photo-picker" data-pick="album-input">选照片</button>
+            <label class="photo-picker" for="camera-input">
+              拍照
+              <input id="camera-input" type="file" accept="image/*" capture="environment">
+            </label>
+            <label class="photo-picker" for="album-input">
+              选照片
+              <input id="album-input" type="file" accept="image/*">
+            </label>
             <button type="button" class="quiet" id="remove-photo" hidden>移除照片</button>
           </div>
-          <input id="camera-input" type="file" accept="image/*" capture="environment" hidden>
-          <input id="album-input" type="file" accept="image/*" hidden>
           <div id="photo-preview"></div>
         </div>
         <div class="time-row">

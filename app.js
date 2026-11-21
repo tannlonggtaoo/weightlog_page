@@ -1,4 +1,4 @@
-import { repository, checkConnection, listRecords, changeRecord, uploadPhoto, readPhoto } from "./github.js";
+import { repository, checkConnection, listRecords, changeRecord, uploadPhoto, readPhoto } from "./github.js?v=2";
 import { showTrend } from "./chart.js";
 import { compressPhoto, createPhotoGallery } from "./photos.js";
 
@@ -193,16 +193,14 @@ function edit(record) {
 for (const button of document.querySelectorAll("[data-kind]")) {
   button.onclick = () => setKind(button.dataset.kind);
 }
-for (const button of document.querySelectorAll("[data-pick]")) {
-  const input = byId(button.dataset.pick);
-  button.onclick = () => input.click();
-  input.onchange = () => {
+for (const input of [byId("camera-input"), byId("album-input")]) {
+  input.onchange = async () => {
     const file = input.files[0];
-    input.value = "";
     if (!file) return;
-    perform(byId("entry-error"), "正在压缩照片…", async () => {
+    await perform(byId("entry-error"), "正在压缩照片…", async () => {
       setDraftPhoto({ preview: await compressPhoto(file) });
     });
+    input.value = "";
   };
 }
 byId("remove-photo").onclick = () => setDraftPhoto(null);
