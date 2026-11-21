@@ -3,6 +3,7 @@ import { showTrend } from "./chart.js";
 import { compressPhoto, createPhotoGallery } from "./photos.js";
 
 const byId = id => document.getElementById(id);
+const kindLabels = { weight: "体重", food: "饮食", exercise: "运动" };
 const tokenKey = "weightlog:" + repository + ":pat";
 const dayFormat = new Intl.DateTimeFormat("zh-CN", {
   year: "numeric", month: "long", day: "numeric", weekday: "long"
@@ -32,7 +33,9 @@ function displayTime(record) {
 }
 
 function recordValue(record) {
-  return record.type === "weight" ? record.kg + " kg" : record.text || "饮食照片";
+  if (record.type === "weight") return record.kg + " kg";
+  if (record.type === "food" && !record.text) return "饮食照片";
+  return record.text;
 }
 
 function show(view) {
@@ -134,11 +137,12 @@ byId("navigation").onclick = event => {
 function setKind(value) {
   kind = value;
   pending = null;
-  const weight = value === "weight";
-  byId("weight-field").hidden = byId("weight-input").disabled = !weight;
-  byId("food-field").hidden = byId("food-input").disabled = weight;
+  byId("entry-error").textContent = "";
   for (const button of document.querySelectorAll("[data-kind]")) {
-    button.setAttribute("aria-pressed", String(button.dataset.kind === kind));
+    const buttonKind = button.dataset.kind;
+    const selected = buttonKind === kind;
+    button.setAttribute("aria-pressed", String(selected));
+    byId(buttonKind + "-field").hidden = byId(buttonKind + "-input").disabled = !selected;
   }
 }
 
@@ -180,9 +184,8 @@ function edit(record) {
   clearEntry();
   editing = record;
   setKind(record.type);
-  byId("weight-input").value = record.kg ?? "";
-  byId("food-input").value = record.text ?? "";
-  if (record.photoSha) setDraftPhoto({ sha: record.photoSha });
+  byId(record.type + "-input").value = record.type === "weight" ? record.kg : record.text ?? "";
+  if (record.type === "food" && record.photoSha) setDraftPhoto({ sha: record.photoSha });
   setTime(record.at.slice(0, 16));
   byId("entry-title").textContent = "修改记录";
   byId("save").textContent = "保存修改";
@@ -229,13 +232,13 @@ function entryTime() {
 byId("entry-form").addEventListener("submit", event => {
   event.preventDefault();
   const output = byId("entry-error");
-  const kg = byId("weight-input").valueAsNumber;
-  const text = byId("food-input").value.trim();
-  if (kind === "weight" && !(kg > 0)) return feedback(output, "请输入大于零的体重。", true);
-  if (kind === "food" && !text && !draftPhoto) return feedback(output, "请写下饮食内容或选一张照片。", true);
+  const input = byId(kind + "-input");
+  const value = kind === "weight" ? { kg: input.valueAsNumber } : { text: input.value.trim() };
+  if (kind === "weight" && !(value.kg > 0)) return feedback(output, "请输入大于零的体重。", true);
+  if (kind === "food" && !value.text && !draftPhoto) return feedback(output, "请写下饮食内容或选一张照片。", true);
+  if (kind === "exercise" && !value.text) return feedback(output, "请写下运动内容。", true);
   pending ??= {
-    id: editing?.id || crypto.randomUUID(), type: kind, at: entryTime(),
-    ...(kind === "weight" ? { kg } : { text })
+    id: editing?.id || crypto.randomUUID(), type: kind, at: entryTime(), ...value
   };
   const record = pending;
   perform(output, "正在保存…", async () => {
@@ -281,7 +284,7 @@ function renderOverview() {
     const time = row.querySelector("time");
     time.dateTime = record.at;
     time.textContent = record.at.slice(11, 16);
-    row.querySelector(".kind-label").textContent = record.type === "weight" ? "体重" : "饮食";
+    row.querySelector(".kind-label").textContent = kindLabels[record.type];
     const value = row.querySelector(".row-value");
     value.textContent = recordValue(record);
     if (record.type === "food" && record.photoSha) {
