@@ -1,5 +1,5 @@
 const baseUrl = "https://openrouter.ai/api/v1";
-const model = "google/gemini-3.1-flash-lite";
+const model = "qwen/qwen3.8-flash";
 
 const instructions = `根据这笔记录给出饮食摄入或运动消耗的热量，统一使用 kcal。
 文字明确给出热量时，将其作为本次记录的热量，优先于照片中的信息，只做单位换算。kcal、千卡、大卡以及饮食或运动描述里的 cal、Cal、「卡」和 Calories 都按 kcal 处理。kJ 除以 4.184，保留一位小数。明确写「小卡」时除以 1000。
@@ -35,10 +35,16 @@ async function request(key, path, { body, signal }) {
     throw new Error("无法连接 OpenRouter，请检查网络后重试。");
   }
   if (!response.ok) {
+    if (response.status === 403) {
+      const result = await response.json().catch(() => null);
+      if (/not available in your region/i.test(result?.error?.message ?? "")) {
+        throw new Error("当前模型在此地区不可用。");
+      }
+    }
     const messages = {
       401: "OpenRouter Key 无效或已失效，请在设置中更新。",
       402: "OpenRouter 余额或此 Key 的额度不足。",
-      403: "OpenRouter 拒绝请求，请检查 Key 权限。",
+      403: "OpenRouter 拒绝请求，请检查模型和 Key 的访问权限。",
       429: "OpenRouter 请求过于频繁，请稍后重试。"
     };
     throw new Error(messages[response.status] || "OpenRouter 请求失败（" + response.status + "）。");

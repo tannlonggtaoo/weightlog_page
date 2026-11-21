@@ -1,7 +1,7 @@
 import { repository, checkConnection, listRecords, changeRecord, uploadPhoto, readPhoto } from "./github.js?v=3";
 import { showTrend } from "./chart.js";
 import { compressPhoto, createPhotoGallery } from "./photos.js";
-import { checkOpenRouterKey, estimateCalories } from "./openrouter.js";
+import { checkOpenRouterKey, estimateCalories } from "./openrouter.js?v=2";
 
 const byId = id => document.getElementById(id);
 const kindLabels = { weight: "体重", food: "饮食", exercise: "运动" };
