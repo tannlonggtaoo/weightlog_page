@@ -26,6 +26,17 @@ export function checkConnection(token) {
   return request(token, "");
 }
 
+export async function uploadPhoto(token, jpegDataUrl) {
+  const content = jpegDataUrl.slice(jpegDataUrl.indexOf(",") + 1);
+  const blob = await request(token, "/git/blobs", "POST", { encoding: "base64", content });
+  return blob.sha;
+}
+
+export async function readPhoto(token, sha) {
+  const blob = await request(token, "/git/blobs/" + encodeURIComponent(sha));
+  return "data:image/jpeg;base64," + blob.content.replace(/\s/g, "");
+}
+
 async function optionalFile(token, path) {
   try {
     return await request(token, path);
@@ -68,12 +79,9 @@ function writeMonth(token, file, message) {
   return request(token, "/contents/" + file.path, "PUT", { message, content, sha: file.sha });
 }
 
-// A date change across months must update both files in the same Git commit.
-async function writeMove(token, head, files, branch, message) {
-  const tree = await request(token, "/git/trees", "POST", {
-    base_tree: head.commit.tree.sha,
-    tree: files.map(file => ({ path: file.path, mode: "100644", type: "blob", content: fileText(file) }))
-  });
+// Publish all changed months and the photo together against the same branch head.
+async function commitFiles(token, head, entries, branch, message) {
+  const tree = await request(token, "/git/trees", "POST", { base_tree: head.commit.tree.sha, tree: entries });
   const commit = await request(token, "/git/commits", "POST", {
     message, tree: tree.sha, parents: [head.sha]
   });
@@ -82,7 +90,7 @@ async function writeMove(token, head, files, branch, message) {
 
 function sameRecord(a, b) {
   return a && b && a.id === b.id && a.at === b.at && a.type === b.type &&
-    a.kg === b.kg && a.text === b.text;
+    a.kg === b.kg && a.text === b.text && (a.photoSha ?? null) === (b.photoSha ?? null);
 }
 
 // before is null for an addition, after is null for a deletion.
@@ -92,7 +100,9 @@ export async function changeRecord(token, before, after) {
   const months = [...new Set([source, target].filter(Boolean))];
   const id = (before || after).id;
   const message = !before ? "Add record" : after ? "Edit record" : "Delete record";
-  const branch = months.length === 2 ? (await checkConnection(token)).default_branch : null;
+  const nextPhotoSha = after?.photoSha ?? null;
+  const photoChanged = (before?.photoSha ?? null) !== nextPhotoSha;
+  const branch = months.length === 2 || photoChanged ? (await checkConnection(token)).default_branch : null;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const head = branch ? await request(token, "/commits/" + encodeURIComponent(branch)) : null;
@@ -109,8 +119,17 @@ export async function changeRecord(token, before, after) {
     if (to) to.records.push(after);
 
     try {
-      if (head) await writeMove(token, head, files, branch, message);
-      else await writeMonth(token, files[0], message);
+      if (head) {
+        const entries = files.map(file => ({
+          path: file.path, mode: "100644", type: "blob", content: fileText(file)
+        }));
+        if (photoChanged) {
+          entries.push({ path: "photos/" + id + ".jpg", mode: "100644", type: "blob", sha: nextPhotoSha });
+        }
+        await commitFiles(token, head, entries, branch, message);
+      } else {
+        await writeMonth(token, files[0], message);
+      }
       return;
     } catch (error) {
       if (attempt > 0 || ![409, 422].includes(error.status)) throw error;

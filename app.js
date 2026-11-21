@@ -1,5 +1,6 @@
-import { repository, checkConnection, listRecords, changeRecord } from "./github.js";
+import { repository, checkConnection, listRecords, changeRecord, uploadPhoto, readPhoto } from "./github.js";
 import { showTrend } from "./chart.js";
+import { compressPhoto, createPhotoGallery } from "./photos.js";
 
 const byId = id => document.getElementById(id);
 const tokenKey = "weightlog:" + repository + ":pat";
@@ -13,9 +14,11 @@ let kind = "weight";
 let editing = null;
 let editReturn = "entry";
 let pending = null;
+let draftPhoto = null;
 let lastSaved = null;
 let records = [];
 let overviewRequest = 0;
+const gallery = createPhotoGallery(sha => readPhoto(token, sha));
 
 function stamp(date) {
   const offset = -date.getTimezoneOffset();
@@ -29,10 +32,11 @@ function displayTime(record) {
 }
 
 function recordValue(record) {
-  return record.type === "weight" ? record.kg + " kg" : record.text;
+  return record.type === "weight" ? record.kg + " kg" : record.text || "饮食照片";
 }
 
 function show(view) {
+  if (currentView === "overview" && view !== "overview") gallery.clear(byId("history"));
   currentView = view;
   for (const id of ["auth", "entry", "overview"]) byId(id).hidden = id !== view;
   byId("settings").hidden = byId("navigation").hidden = view === "auth";
@@ -115,7 +119,7 @@ byId("forget").onclick = () => {
   byId("token-input").value = "";
   clearEntry();
   records = [];
-  byId("history").replaceChildren();
+  gallery.clear(byId("history"));
   byId("overview-content").hidden = true;
   show("auth");
   feedback(byId("auth-message"), "已清除此设备的令牌。");
@@ -148,11 +152,22 @@ function setTime(value = "") {
   pending = null;
 }
 
+function setDraftPhoto(photo) {
+  draftPhoto = photo;
+  pending = null;
+  const preview = byId("photo-preview");
+  gallery.clear(preview);
+  if (photo) preview.append(gallery.thumbnail(photo));
+  byId("remove-photo").hidden = !photo;
+  byId("entry-error").textContent = "";
+}
+
 function clearEntry() {
   editing = pending = lastSaved = null;
   byId("entry-form").reset();
   setTime();
   setKind(kind);
+  setDraftPhoto(null);
   byId("entry-title").textContent = "记一笔";
   byId("entry-date").textContent = dayFormat.format(new Date());
   byId("save").textContent = "保存记录";
@@ -167,6 +182,7 @@ function edit(record) {
   setKind(record.type);
   byId("weight-input").value = record.kg ?? "";
   byId("food-input").value = record.text ?? "";
+  if (record.photoSha) setDraftPhoto({ sha: record.photoSha });
   setTime(record.at.slice(0, 16));
   byId("entry-title").textContent = "修改记录";
   byId("save").textContent = "保存修改";
@@ -177,6 +193,19 @@ function edit(record) {
 for (const button of document.querySelectorAll("[data-kind]")) {
   button.onclick = () => setKind(button.dataset.kind);
 }
+for (const button of document.querySelectorAll("[data-pick]")) {
+  const input = byId(button.dataset.pick);
+  button.onclick = () => input.click();
+  input.onchange = () => {
+    const file = input.files[0];
+    input.value = "";
+    if (!file) return;
+    perform(byId("entry-error"), "正在压缩照片…", async () => {
+      setDraftPhoto({ preview: await compressPhoto(file) });
+    });
+  };
+}
+byId("remove-photo").onclick = () => setDraftPhoto(null);
 byId("toggle-time").onclick = () => {
   const input = byId("time-input");
   setTime(input.hidden ? stamp(new Date()).slice(0, 16) : "");
@@ -205,13 +234,17 @@ byId("entry-form").addEventListener("submit", event => {
   const kg = byId("weight-input").valueAsNumber;
   const text = byId("food-input").value.trim();
   if (kind === "weight" && !(kg > 0)) return feedback(output, "请输入大于零的体重。", true);
-  if (kind === "food" && !text) return feedback(output, "请写下这次的饮食。", true);
+  if (kind === "food" && !text && !draftPhoto) return feedback(output, "请写下饮食内容或选一张照片。", true);
   pending ??= {
     id: editing?.id || crypto.randomUUID(), type: kind, at: entryTime(),
     ...(kind === "weight" ? { kg } : { text })
   };
   const record = pending;
   perform(output, "正在保存…", async () => {
+    if (record.type === "food" && draftPhoto) {
+      draftPhoto.sha ??= await uploadPhoto(token, draftPhoto.preview);
+      record.photoSha = draftPhoto.sha;
+    }
     await changeRecord(token, editing, record);
     const backToOverview = editing && editReturn === "overview";
     clearEntry();
@@ -232,7 +265,7 @@ function renderOverview() {
   byId("latest-at").textContent = latest ? displayTime(latest) : "还没有体重记录";
   byId("entry-count").textContent = records.length + " 条";
   const history = byId("history");
-  history.replaceChildren();
+  gallery.clear(history);
   const days = new Map();
   for (const record of records) {
     const day = record.at.slice(0, 10);
@@ -251,7 +284,12 @@ function renderOverview() {
     time.dateTime = record.at;
     time.textContent = record.at.slice(11, 16);
     row.querySelector(".kind-label").textContent = record.type === "weight" ? "体重" : "饮食";
-    row.querySelector(".row-value").textContent = recordValue(record);
+    const value = row.querySelector(".row-value");
+    value.textContent = recordValue(record);
+    if (record.type === "food" && record.photoSha) {
+      value.hidden = !record.text;
+      row.querySelector(".row-content").append(gallery.thumbnail({ sha: record.photoSha }));
+    }
     days.get(day).append(row);
   }
   if (!records.length) history.textContent = "还没有记录。点「记一笔」开始。";

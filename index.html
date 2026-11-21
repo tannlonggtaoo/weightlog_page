@@ -60,7 +60,15 @@
         </div>
         <div id="food-field" class="value-field" hidden>
           <label for="food-input">吃了什么？</label>
-          <textarea id="food-input" rows="3" placeholder="例如，一碗米饭、清炒时蔬和煎鱼" required disabled></textarea>
+          <textarea id="food-input" rows="3" placeholder="写下这餐吃了什么，也可以只拍一张照片" disabled></textarea>
+          <div class="photo-actions">
+            <button type="button" class="photo-picker" data-pick="camera-input">拍照</button>
+            <button type="button" class="photo-picker" data-pick="album-input">选照片</button>
+            <button type="button" class="quiet" id="remove-photo" hidden>移除照片</button>
+          </div>
+          <input id="camera-input" type="file" accept="image/*" capture="environment" hidden>
+          <input id="album-input" type="file" accept="image/*" hidden>
+          <div id="photo-preview"></div>
         </div>
         <div class="time-row">
           <label for="time-input">记录时间</label>
@@ -105,12 +113,22 @@
   <template id="record-row">
     <li class="record-row">
       <div class="row-meta"><time></time><span class="kind-label"></span></div>
-      <p class="row-value"></p>
+      <div class="row-content"><p class="row-value"></p></div>
       <div class="row-actions">
         <button type="button" class="quiet" data-action="edit">修改</button>
         <button type="button" class="danger" data-action="delete">删除</button>
       </div>
     </li>
   </template>
+  <template id="photo-thumbnail">
+    <button type="button" class="photo-thumb" aria-label="查看饮食照片">
+      <img alt="饮食照片" hidden>
+      <span>照片</span>
+    </button>
+  </template>
+  <dialog id="photo-viewer" aria-label="饮食照片">
+    <img alt="饮食照片大图">
+    <form method="dialog"><button type="submit" class="quiet" autofocus>关闭</button></form>
+  </dialog>
 </body>
 </html>
