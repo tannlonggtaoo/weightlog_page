@@ -7,8 +7,8 @@
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f9f6">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141c19">
   <title>Weightlog · 体重、饮食与运动手记</title>
-  <link rel="stylesheet" href="./style.css?v=4">
-  <script type="module" src="./app.js?v=7"></script>
+  <link rel="stylesheet" href="./style.css?v=5">
+  <script type="module" src="./app.js?v=8"></script>
 </head>
 <body>
   <header class="topbar">
@@ -67,6 +67,14 @@
               <label for="height-input">身高（cm）</label>
               <input id="height-input" type="number" inputmode="decimal" min="0" step="any">
             </div>
+            <div>
+              <label for="sex-input">性别</label>
+              <select id="sex-input">
+                <option value="">默认（男）</option>
+                <option value="male">男</option>
+                <option value="female">女</option>
+              </select>
+            </div>
           </div>
           <div class="form-actions">
             <button class="primary" type="submit">保存资料</button>
@@ -79,6 +87,27 @@
     <section id="entry" aria-labelledby="entry-title" hidden>
       <h1 id="entry-title">记一笔</h1>
       <p class="intro" id="entry-date"></p>
+      <section class="card energy-card" id="today-energy" aria-labelledby="today-energy-title">
+        <div class="energy-heading">
+          <h2 id="today-energy-title">今日热量</h2>
+          <div class="energy-result" id="today-energy-result" hidden>
+            <span class="energy-balance" id="today-energy-balance" role="status"></span>
+          </div>
+        </div>
+        <div id="today-energy-content" hidden>
+          <div class="energy-amounts">
+            <p>已记摄入 <strong id="today-energy-intake"></strong> kcal</p>
+            <p>全天估算消耗 <strong id="today-energy-expenditure"></strong> kcal</p>
+          </div>
+          <div class="energy-meter" id="today-energy-meter" aria-hidden="true">
+            <div class="energy-fill" id="today-energy-fill"></div>
+          </div>
+        </div>
+        <div class="energy-loading" id="today-energy-loading">
+          <p class="hint" id="today-energy-message" role="status"></p>
+          <button type="button" class="quiet" id="today-energy-retry" hidden>重试</button>
+        </div>
+      </section>
       <form id="entry-form" class="card form-card">
         <div class="switcher" role="group" aria-label="记录类别">
           <button type="button" data-kind="weight" aria-pressed="true">体重</button>
@@ -139,7 +168,7 @@
 
     <section id="overview" aria-labelledby="overview-title" hidden>
       <h1 id="overview-title">总览</h1>
-      <p class="intro">体重趋势与每日记录</p>
+      <p class="intro">热量差额按已记饮食和运动估算。</p>
       <p id="overview-message" class="message" role="status"></p>
       <button type="button" class="quiet" id="retry" hidden>重新读取</button>
       <div id="overview-content" hidden>
@@ -161,6 +190,12 @@
     </section>
   </main>
 
+  <template id="energy-help-template">
+    <details class="energy-help">
+      <summary aria-label="查看热量缺项说明"><span aria-hidden="true">?</span></summary>
+      <p class="hint energy-help-text"></p>
+    </details>
+  </template>
   <template id="record-row">
     <li class="record-row">
       <div class="row-meta"><time></time><span class="kind-label"></span></div>

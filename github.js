@@ -1,3 +1,5 @@
+import { latestWeight } from "./energy.js";
+
 export const repository = "tannlonggtaoo/weightlog";
 const baseUrl = "https://api.github.com/repos/" + repository;
 
@@ -22,8 +24,8 @@ async function request(token, path, method = "GET", body, signal) {
   return response.json();
 }
 
-export function checkConnection(token) {
-  return request(token, "");
+export function checkConnection(token, signal) {
+  return request(token, "", "GET", undefined, signal);
 }
 
 export async function uploadPhoto(token, jpegDataUrl) {
@@ -37,9 +39,9 @@ export async function readPhoto(token, sha, signal) {
   return "data:image/jpeg;base64," + blob.content.replace(/\s/g, "");
 }
 
-async function optionalFile(token, path) {
+async function optionalFile(token, path, signal) {
   try {
-    return await request(token, path);
+    return await request(token, path, "GET", undefined, signal);
   } catch (error) {
     if (error.status === 404) return null;
     throw error;
@@ -58,15 +60,40 @@ function decodeRecords(file) {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
-export async function listRecords(token) {
-  const files = await optionalFile(token, "/contents/records");
+async function listMonthFiles(token, signal) {
+  const files = await optionalFile(token, "/contents/records", signal);
   if (!files) {
-    await checkConnection(token);
+    await checkConnection(token, signal);
     return [];
   }
-  const months = files.filter(file => /^\d{4}-\d{2}\.json$/.test(file.name));
-  const data = await Promise.all(months.map(async file => decodeRecords(await request(token, "/git/blobs/" + file.sha))));
+  return files.filter(file => /^\d{4}-\d{2}\.json$/.test(file.name));
+}
+
+async function readListedMonth(token, file, signal) {
+  return decodeRecords(await request(token, "/git/blobs/" + file.sha, "GET", undefined, signal));
+}
+
+export async function listRecords(token) {
+  const months = await listMonthFiles(token);
+  const data = await Promise.all(months.map(file => readListedMonth(token, file)));
   return data.flat().sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+}
+
+export async function listDayRecords(token, day, signal) {
+  const monthName = day.slice(0, 7) + ".json";
+  const months = await listMonthFiles(token, signal);
+  const currentMonth = months.find(file => file.name === monthName);
+  const records = currentMonth ? await readListedMonth(token, currentMonth, signal) : [];
+  const throughToday = records.filter(record => record.at.slice(0, 10) <= day);
+  if (latestWeight(throughToday)) return throughToday;
+
+  const earlierMonths = months.filter(file => file.name < monthName)
+    .sort((a, b) => b.name.localeCompare(a.name));
+  for (const file of earlierMonths) {
+    const weight = latestWeight(await readListedMonth(token, file, signal));
+    if (weight) return [...throughToday, weight];
+  }
+  return throughToday;
 }
 
 function fileText(file) {

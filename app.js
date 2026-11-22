@@ -1,5 +1,6 @@
-import { repository, checkConnection, listRecords, changeRecord, uploadPhoto, readPhoto } from "./github.js?v=3";
+import { repository, checkConnection, listRecords, listDayRecords, changeRecord, uploadPhoto, readPhoto } from "./github.js?v=4";
 import { showTrend } from "./chart.js";
+import { defaultBirthYear, defaultHeight, isValidKcal, summarizeDays } from "./energy.js";
 import { compressPhoto, createPhotoGallery } from "./photos.js";
 import { checkOpenRouterKey, estimateCalories } from "./openrouter.js?v=4";
 
@@ -11,12 +12,14 @@ const tokenKey = storagePrefix + "pat";
 const openRouterStorageKey = storagePrefix + "openrouter";
 const birthYearKey = storagePrefix + "birth-year";
 const heightKey = storagePrefix + "height-cm";
+const sexKey = storagePrefix + "sex";
 const calorieInput = byId("calorie-input");
 const estimateButton = byId("estimate-calories");
 const estimateMessage = byId("estimate-message");
 const dayFormat = new Intl.DateTimeFormat("zh-CN", {
   year: "numeric", month: "long", day: "numeric", weekday: "long"
 });
+const kcalFormat = new Intl.NumberFormat("zh-CN");
 let token = localStorage.getItem(tokenKey) || "";
 let openRouterKey = localStorage.getItem(openRouterStorageKey) || "";
 let currentView = "auth";
@@ -31,6 +34,9 @@ let estimateController = null;
 let lastSaved = null;
 let records = [];
 let overviewRequest = 0;
+let todayController = null;
+let todayDay = "";
+let midnightTimer;
 const gallery = createPhotoGallery(sha => readPhoto(token, sha));
 
 function stamp(date) {
@@ -52,12 +58,15 @@ function recordValue(record) {
 
 function calorieSummary(record) {
   const label = calorieLabels[record.type];
-  return label && Number.isFinite(record.kcal) ? label + " " + record.kcal + " kcal" : "";
+  return label && isValidKcal(record.kcal) ? label + " " + record.kcal + " kcal" : "";
 }
 
 function show(view) {
   if (currentView === "overview" && view !== "overview") gallery.clear(byId("history"));
-  if (currentView === "entry" && view !== "entry") cancelEstimate();
+  if (currentView === "entry" && view !== "entry") {
+    cancelEstimate();
+    stopTodayEnergy();
+  }
   currentView = view;
   for (const id of ["auth", "entry", "overview"]) byId(id).hidden = id !== view;
   byId("settings").hidden = byId("navigation").hidden = view === "auth";
@@ -67,8 +76,13 @@ function show(view) {
     else button.removeAttribute("aria-current");
   }
   if (view === "entry") {
-    const date = editing ? new Date(editing.at.slice(0, 10) + "T12:00:00") : new Date();
-    byId("entry-date").textContent = dayFormat.format(date);
+    if (editing) {
+      stopTodayEnergy();
+      byId("today-energy").hidden = true;
+      byId("entry-date").textContent = dayFormat.format(new Date(editing.at.slice(0, 10) + "T12:00:00"));
+    } else {
+      loadTodayEnergy();
+    }
   }
   if (view === "overview") loadOverview();
   window.scrollTo(0, 0);
@@ -77,6 +91,89 @@ function show(view) {
 function feedback(output, text, error = false) {
   output.classList.toggle("error", error);
   output.textContent = text;
+}
+
+function energyProfile() {
+  return {
+    birthYear: Number(localStorage.getItem(birthYearKey)),
+    height: Number(localStorage.getItem(heightKey)),
+    sex: localStorage.getItem(sexKey)
+  };
+}
+
+function renderEnergyBalance(output, balance) {
+  if (balance === 0) {
+    output.dataset.balance = "even";
+    output.textContent = "估算持平";
+  } else {
+    output.dataset.balance = balance > 0 ? "deficit" : "surplus";
+    const label = balance > 0 ? "估算缺口" : "估算盈余";
+    output.textContent = label + " " + kcalFormat.format(Math.abs(balance)) + " kcal";
+  }
+}
+
+function createEnergyHelp(missingCount) {
+  const help = byId("energy-help-template").content.firstElementChild.cloneNode(true);
+  help.querySelector("p").textContent = missingCount + " 条记录未填热量，暂按 0 kcal 计算";
+  return help;
+}
+
+function renderTodayEnergy(energy) {
+  const result = byId("today-energy-result");
+  const balance = byId("today-energy-balance");
+  const meter = byId("today-energy-meter");
+  result.querySelector(".energy-help")?.remove();
+  if (energy.missingCount) result.append(createEnergyHelp(energy.missingCount));
+
+  byId("today-energy-intake").textContent = kcalFormat.format(energy.intake);
+  byId("today-energy-expenditure").textContent = kcalFormat.format(energy.expenditure);
+  byId("today-energy-fill").style.width = energy.fraction * 100 + "%";
+  meter.toggleAttribute("data-incomplete", energy.missingCount > 0);
+  byId("today-energy-loading").hidden = true;
+  byId("today-energy-content").hidden = result.hidden = false;
+  renderEnergyBalance(balance, energy.balance);
+  meter.dataset.balance = balance.dataset.balance;
+}
+
+function stopTodayEnergy() {
+  todayController?.abort();
+  todayController = null;
+  clearTimeout(midnightTimer);
+}
+
+async function loadTodayEnergy() {
+  stopTodayEnergy();
+  const now = new Date();
+  const day = stamp(now).slice(0, 10);
+  todayDay = day;
+  const tomorrow = new Date(now);
+  tomorrow.setHours(24, 0, 0, 0);
+  midnightTimer = setTimeout(loadTodayEnergy, tomorrow - now);
+
+  const controller = new AbortController();
+  todayController = controller;
+  const output = byId("today-energy-message");
+  const retry = byId("today-energy-retry");
+  byId("entry-date").textContent = dayFormat.format(now);
+  byId("today-energy").hidden = byId("today-energy-loading").hidden = false;
+  byId("today-energy-content").hidden = byId("today-energy-result").hidden = retry.hidden = true;
+  feedback(output, "正在读取今日热量…");
+  try {
+    const result = await listDayRecords(token, day, controller.signal);
+    if (todayController !== controller) return;
+    if (stamp(new Date()).slice(0, 10) !== day) {
+      loadTodayEnergy();
+      return;
+    }
+    const today = summarizeDays(result, energyProfile(), day).find(group => group.day === day);
+    renderTodayEnergy(today.energy);
+  } catch (error) {
+    if (todayController !== controller) return;
+    feedback(output, error.status === 401 ? error.message : "读取今日热量失败。", true);
+    retry.hidden = false;
+  } finally {
+    if (todayController === controller) todayController = null;
+  }
 }
 
 function report(error, output) {
@@ -119,8 +216,11 @@ function loadSettings() {
   for (const id of ["token-input", "openrouter-key-input"]) byId(id).value = "";
   for (const id of ["auth-message", "openrouter-message", "profile-message"]) feedback(byId(id), "");
   byId("birth-year-input").max = new Date().getFullYear();
+  byId("birth-year-input").placeholder = "默认 " + defaultBirthYear;
+  byId("height-input").placeholder = "默认 " + defaultHeight;
   byId("birth-year-input").value = localStorage.getItem(birthYearKey) ?? "";
   byId("height-input").value = localStorage.getItem(heightKey) ?? "";
+  byId("sex-input").value = localStorage.getItem(sexKey) ?? "";
   updateCredentialControls();
 }
 
@@ -197,6 +297,9 @@ byId("profile-form").addEventListener("submit", event => {
     if (input.value) localStorage.setItem(key, String(input.valueAsNumber));
     else localStorage.removeItem(key);
   }
+  const sex = byId("sex-input").value;
+  if (sex) localStorage.setItem(sexKey, sex);
+  else localStorage.removeItem(sexKey);
   feedback(output, "已保存个人资料。");
 });
 byId("navigation").onclick = event => {
@@ -378,7 +481,7 @@ byId("entry-form").addEventListener("submit", event => {
   if (kind === "exercise" && !value.text) return feedback(output, "请写下运动内容。", true);
   if (kind !== "weight" && calorieInput.value !== "") {
     const kcal = calorieInput.valueAsNumber;
-    if (!Number.isFinite(kcal) || kcal < 0) return feedback(output, "请输入非负的热量数值。", true);
+    if (!isValidKcal(kcal)) return feedback(output, "请输入非负的热量数值。", true);
     value.kcal = kcal;
   }
   cancelEstimate();
@@ -401,9 +504,47 @@ byId("entry-form").addEventListener("submit", event => {
       const details = [recordValue(record), calorieSummary(record), displayTime(record)];
       byId("receipt-text").textContent = "已保存 " + details.filter(Boolean).join(" · ");
       byId("receipt").hidden = false;
+      loadTodayEnergy();
     }
   });
 });
+
+function createDayHeading(day, energy) {
+  const heading = document.createElement("div");
+  heading.className = "day-heading";
+  const title = document.createElement("h3");
+  title.className = "day-title";
+  title.textContent = dayFormat.format(new Date(day + "T12:00:00"));
+  heading.append(title);
+  if (energy.missingCount) {
+    heading.append(createEnergyHelp(energy.missingCount));
+  } else if (energy.entryCount) {
+    const balance = document.createElement("span");
+    balance.className = "energy-balance";
+    renderEnergyBalance(balance, energy.balance);
+    heading.append(balance);
+  }
+  return heading;
+}
+
+function createRecordRow(record) {
+  const row = byId("record-row").content.firstElementChild.cloneNode(true);
+  row.dataset.id = record.id;
+  const time = row.querySelector("time");
+  time.dateTime = record.at;
+  time.textContent = record.at.slice(11, 16);
+  row.querySelector(".kind-label").textContent = kindLabels[record.type];
+  const value = row.querySelector(".row-value");
+  value.textContent = recordValue(record);
+  const calories = row.querySelector(".row-calories");
+  calories.textContent = calorieSummary(record);
+  calories.hidden = !calories.textContent;
+  if (record.type === "food" && record.photoSha) {
+    value.hidden = !record.text;
+    row.querySelector(".row-content").append(gallery.thumbnail({ sha: record.photoSha }));
+  }
+  return row;
+}
 
 function renderOverview() {
   const latest = records.find(record => record.type === "weight");
@@ -413,34 +554,11 @@ function renderOverview() {
   byId("entry-count").textContent = records.length + " 条";
   const history = byId("history");
   gallery.clear(history);
-  const days = new Map();
-  for (const record of records) {
-    const day = record.at.slice(0, 10);
-    if (!days.has(day)) {
-      const title = document.createElement("h3");
-      title.className = "day-title";
-      title.textContent = dayFormat.format(new Date(day + "T12:00:00"));
-      const list = document.createElement("ul");
-      list.className = "card day-list";
-      history.append(title, list);
-      days.set(day, list);
-    }
-    const row = byId("record-row").content.firstElementChild.cloneNode(true);
-    row.dataset.id = record.id;
-    const time = row.querySelector("time");
-    time.dateTime = record.at;
-    time.textContent = record.at.slice(11, 16);
-    row.querySelector(".kind-label").textContent = kindLabels[record.type];
-    const value = row.querySelector(".row-value");
-    value.textContent = recordValue(record);
-    const calories = row.querySelector(".row-calories");
-    calories.textContent = calorieSummary(record);
-    calories.hidden = !calories.textContent;
-    if (record.type === "food" && record.photoSha) {
-      value.hidden = !record.text;
-      row.querySelector(".row-content").append(gallery.thumbnail({ sha: record.photoSha }));
-    }
-    days.get(day).append(row);
+  for (const { day, records: dayRecords, energy } of summarizeDays(records, energyProfile()).reverse()) {
+    const list = document.createElement("ul");
+    list.className = "card day-list";
+    for (const record of dayRecords) list.append(createRecordRow(record));
+    history.append(createDayHeading(day, energy), list);
   }
   if (!records.length) history.textContent = "还没有记录。点「记一笔」开始。";
   byId("overview-content").hidden = false;
@@ -466,6 +584,12 @@ async function loadOverview() {
 }
 
 byId("retry").onclick = loadOverview;
+byId("today-energy-retry").onclick = loadTodayEnergy;
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && currentView === "entry" && !editing && stamp(new Date()).slice(0, 10) !== todayDay) {
+    loadTodayEnergy();
+  }
+});
 byId("history").onclick = event => {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
