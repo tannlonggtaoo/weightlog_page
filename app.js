@@ -2,7 +2,7 @@ import { repository, checkConnection, listRecords, listDayRecords, changeRecord,
 import { showTrend } from "./chart.js";
 import { defaultBirthYear, defaultHeight, isValidKcal, summarizeDays } from "./energy.js";
 import { compressPhoto, createPhotoGallery } from "./photos.js";
-import { checkOpenRouterKey, estimateCalories } from "./openrouter.js?v=4";
+import { checkOpenRouterKey, estimateCalories } from "./openrouter.js?v=5";
 
 const byId = id => document.getElementById(id);
 const kindLabels = { weight: "体重", food: "饮食", exercise: "运动" };

@@ -1,5 +1,5 @@
 const baseUrl = "https://openrouter.ai/api/v1";
-const model = "qwen/qwen3.8-flash";
+const model = "qwen/qwen4-max";
 
 const instructions = `根据这笔记录给出饮食摄入或运动消耗的热量，统一使用 kcal。
 文字明确给出热量时，将其作为本次记录的热量，优先于照片中的信息，只做单位换算。kcal、千卡、大卡以及饮食或运动描述里的 cal、Cal、「卡」和 Calories 都按 kcal 处理。kJ 除以 4.184，保留一位小数。明确写「小卡」时除以 1000。
@@ -77,7 +77,7 @@ export async function estimateCalories(key, { kind, text, photo }, signal) {
       input: [{ role: "user", content }],
       text: { format: calorieFormat },
       provider: { require_parameters: true },
-      reasoning: { enabled: true, max_tokens: 768 },
+      reasoning: { effort: "low" },
       max_output_tokens: 1024
     }
   });
