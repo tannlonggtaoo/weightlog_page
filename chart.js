@@ -1,26 +1,74 @@
 const canvas = document.querySelector("#trend");
 const caption = document.querySelector("#chart-caption");
+const legend = document.querySelector("#chart-legend");
+const range = document.querySelector("#trend-range");
+const dayMs = 86_400_000;
 let weights = [];
+let averages = [];
 let points = [];
 let selected = null;
 
 export function showTrend(records) {
-  weights = records.filter(record => record.type === "weight").reverse();
+  weights = records
+    .filter(record => record.type === "weight" && Number.isFinite(record.kg) && record.kg > 0)
+    .map(record => ({ record, time: Date.parse(record.at) }))
+    .filter(({ time }) => Number.isFinite(time))
+    .sort((a, b) => a.time - b.time);
+  averages = movingAverages(weights);
   selected = null;
   draw();
 }
 
+function movingAverages(readings) {
+  const days = new Map();
+  for (const { record, time } of readings) {
+    const date = new Date(time);
+    // Use the local calendar date even when a clock change makes a day shorter or longer.
+    const key = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+    if (!days.has(key)) days.set(key, { sum: 0, count: 0, time });
+    const day = days.get(key);
+    day.sum += record.kg;
+    day.count++;
+    day.time = time;
+  }
+
+  return Array.from(days, ([date, day]) => {
+    let sum = 0;
+    let count = 0;
+    for (let offset = 0; offset < 7; offset++) {
+      const sample = days.get(date - offset * dayMs);
+      if (!sample) continue;
+      sum += sample.sum / sample.count;
+      count++;
+    }
+    return { time: day.time, kg: sum / count };
+  });
+}
+
+function dateLabel(date, includeYear) {
+  const monthDay = `${date.getMonth() + 1}/${date.getDate()}`;
+  return includeYear ? `${date.getFullYear()}/${monthDay}` : monthDay;
+}
+
 function draw() {
-  const end = new Date();
+  const all = range.value === "all";
+  const end = all && weights.length ? new Date(weights.at(-1).time) : new Date();
+  const endLabel = all ? dateLabel(end, true) : "今天";
   end.setHours(24, 0, 0, 0);
-  const start = new Date(end);
-  start.setDate(start.getDate() - 30);
-  const recent = weights.filter(record => Date.parse(record.at) >= start && Date.parse(record.at) < end);
-  canvas.hidden = !recent.length;
+  const start = all && weights.length ? new Date(weights[0].time) : new Date(end);
+  if (all) start.setHours(0, 0, 0, 0);
+  else start.setDate(start.getDate() - Number(range.value));
+
+  const inRange = ({ time }) => time >= start && time < end;
+  const recent = weights.filter(inRange);
+  canvas.hidden = legend.hidden = !recent.length;
   if (!recent.length) {
-    caption.textContent = "近 30 天还没有体重记录。";
+    points = [];
+    caption.textContent = all ? "还没有体重记录。" : `近 ${range.value} 天还没有体重记录。`;
     return;
   }
+  const recentAverages = averages.filter(inRange);
+
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   if (!width || !height) return;
@@ -33,7 +81,7 @@ function draw() {
   const color = name => style.getPropertyValue(name).trim();
   const accent = color("--accent");
 
-  const values = recent.map(record => record.kg);
+  const values = [...recent.map(({ record }) => record.kg), ...recentAverages.map(({ kg }) => kg)];
   const low = Math.min(...values);
   const high = Math.max(...values);
   const padding = Math.max((high - low) * .15, .1);
@@ -55,16 +103,24 @@ function draw() {
     ctx.lineTo(right, pos);
     ctx.stroke();
   }
-  ctx.fillText((start.getMonth() + 1) + "/" + start.getDate(), left, height - 8);
+  ctx.fillText(dateLabel(start, all), left, height - 8);
   ctx.textAlign = "right";
-  ctx.fillText("今天", right, height - 8);
+  ctx.fillText(endLabel, right, height - 8);
 
-  points = recent.map(record => ({ record, x: x(Date.parse(record.at)), y: y(record.kg) }));
+  points = recent.map(({ record, time }) => ({ record, x: x(time), y: y(record.kg) }));
   ctx.beginPath();
   points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
   ctx.strokeStyle = accent;
   ctx.lineWidth = 2;
   ctx.stroke();
+
+  ctx.beginPath();
+  recentAverages.forEach(({ time, kg }, i) => i ? ctx.lineTo(x(time), y(kg)) : ctx.moveTo(x(time), y(kg)));
+  ctx.strokeStyle = color("--muted");
+  ctx.setLineDash([5, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
   ctx.fillStyle = accent;
   ctx.strokeStyle = color("--surface");
   ctx.lineWidth = 1.2;
@@ -79,7 +135,13 @@ function draw() {
     : "共 " + recent.length + " 次测量，轻点图上的点可查看。";
 }
 
+range.addEventListener("change", () => {
+  selected = null;
+  draw();
+});
+
 canvas.addEventListener("click", event => {
+  if (!points.length) return;
   const rect = canvas.getBoundingClientRect();
   const distance = p => Math.hypot(p.x - (event.clientX - rect.left), p.y - (event.clientY - rect.top));
   selected = points.reduce((nearest, p) => distance(p) < distance(nearest) ? p : nearest).record;

@@ -7,8 +7,8 @@
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f9f6">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141c19">
   <title>Weightlog · 体重、饮食与运动手记</title>
-  <link rel="stylesheet" href="./style.css?v=6">
-  <script type="module" src="./app.js?v=9"></script>
+  <link rel="stylesheet" href="./style.css?v=7">
+  <script type="module" src="./app.js?v=10"></script>
 </head>
 <body>
   <header class="topbar">
@@ -179,9 +179,18 @@
               <div class="reading"><strong id="latest-kg">—</strong><span>kg</span></div>
               <p class="hint" id="latest-at"></p>
             </div>
-            <span class="range">近 30 天趋势</span>
+            <select id="trend-range" aria-label="体重趋势范围">
+              <option value="7">近 7 天</option>
+              <option value="30" selected>近 30 天</option>
+              <option value="90">近 90 天</option>
+              <option value="all">全部</option>
+            </select>
           </div>
-          <canvas id="trend" aria-label="近 30 天体重趋势，测量详情见下方每日记录"></canvas>
+          <canvas id="trend" aria-label="体重趋势图，包含实测体重和 7 日移动均线，测量详情见下方每日记录"></canvas>
+          <p id="chart-legend" class="hint chart-legend" hidden>
+            <span>实测体重</span>
+            <span class="average-label">7 日移动均线</span>
+          </p>
           <p class="hint chart-caption" id="chart-caption" aria-live="polite"></p>
         </div>
         <div class="history-head"><h2>每日记录</h2><span class="hint" id="entry-count"></span></div>

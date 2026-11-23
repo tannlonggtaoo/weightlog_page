@@ -1,5 +1,5 @@
 import { repository, checkConnection, listRecords, listDayRecords, changeRecord, uploadPhoto, readPhoto } from "./github.js?v=4";
-import { showTrend } from "./chart.js";
+import { showTrend } from "./chart.js?v=2";
 import { defaultBirthYear, defaultHeight, isValidKcal, summarizeDays } from "./energy.js";
 import { compressPhoto, createPhotoGallery } from "./photos.js";
 import { checkOpenRouterKey, estimateCalories } from "./openrouter.js?v=5";
